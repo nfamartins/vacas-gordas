@@ -33,6 +33,21 @@ class RuleRepository(BaseRepository):
             logger.error("Erro em find_active de rules: %s", exc)
             return []
 
+    def find_all(self, active_only: bool = False) -> list[dict]:
+        """
+        Retorna todas as regras (ativas e inativas), ordenadas por priority.
+
+        Args:
+            active_only: Se True, retorna apenas as ativas (equivale a find_active).
+        """
+        try:
+            query = {"is_active": True} if active_only else {}
+            docs = list(self.col.find(query).sort([("is_active", -1), ("priority", -1)]))
+            return _serialize_list(docs)
+        except Exception as exc:
+            logger.error("Erro em find_all de rules: %s", exc)
+            return []
+
     def insert(self, rule: dict) -> str:
         """
         Insere uma nova regra de categorização.
@@ -88,6 +103,45 @@ class RuleRepository(BaseRepository):
             return result.modified_count > 0
         except Exception as exc:
             logger.error("Erro em deactivate de rules (%s): %s", rule_id, exc)
+            return False
+
+    def reactivate(self, rule_id: str) -> bool:
+        """
+        Reativa uma regra previamente desativada.
+
+        Returns:
+            True se a regra foi reativada.
+        """
+        try:
+            result = self.col.update_one(
+                {"_id": ObjectId(rule_id)},
+                {"$set": {"is_active": True}},
+            )
+            return result.modified_count > 0
+        except Exception as exc:
+            logger.error("Erro em reactivate de rules (%s): %s", rule_id, exc)
+            return False
+
+    def update(self, rule_id: str, data: dict) -> bool:
+        """
+        Atualiza campos de uma regra.
+
+        Args:
+            rule_id: ID da regra.
+            data:    Campos a atualizar (não inclua _id).
+
+        Returns:
+            True se algum documento foi modificado.
+        """
+        try:
+            data.pop("_id", None)
+            result = self.col.update_one(
+                {"_id": ObjectId(rule_id)},
+                {"$set": data},
+            )
+            return result.modified_count > 0
+        except Exception as exc:
+            logger.error("Erro em update de rules (%s): %s", rule_id, exc)
             return False
 
     def find_by_pattern(self, pattern: str) -> dict | None:
