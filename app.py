@@ -76,6 +76,7 @@ from ui.pages import (  # noqa: E402
     render_chat,
     render_dashboard,
     render_import,
+    render_settings,
     render_transactions,
 )
 
@@ -85,6 +86,7 @@ _PAGES: dict[str, callable] = {
     "Categorizar": render_categorization,
     "Transações": render_transactions,
     "Chat Financeiro": render_chat,
+    "⚙️ Configurações": render_settings,
 }
 
 current_page = render_sidebar()

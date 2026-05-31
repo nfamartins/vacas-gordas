@@ -9,6 +9,7 @@ _PAGES = [
     "Categorizar",
     "Transações",
     "Chat Financeiro",
+    "⚙️ Configurações",
 ]
 
 _VERSION = "v0.1.0"
