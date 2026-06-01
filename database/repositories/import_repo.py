@@ -118,6 +118,15 @@ class ImportRepository(BaseRepository):
             logger.error("Erro em find_recent de imports: %s", exc)
             return []
 
+    def delete(self, import_id: str) -> bool:
+        """Remove o registro de importação pelo seu ID."""
+        try:
+            result = self.col.delete_one({"_id": ObjectId(import_id)})
+            return result.deleted_count > 0
+        except Exception as exc:
+            logger.error("Erro em delete de imports (%s): %s", import_id, exc)
+            return False
+
     def find_by_account(self, account_id: str) -> list[dict]:
         """
         Retorna importações de uma conta específica, ordenadas por data.

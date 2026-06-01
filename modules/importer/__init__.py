@@ -100,6 +100,7 @@ def import_file(
     account_id_str: str,
     import_id_str: str,
     parser_class: type[BaseParser] | None = None,
+    payment_date: str | None = None,
 ) -> dict[str, Any]:
     """
     Executa o fluxo completo de importação de um arquivo financeiro.
@@ -187,6 +188,7 @@ def import_file(
                 import_id=import_id,
                 source_file=filename,
                 parser_id=parser_id,
+                payment_date=payment_date,
             )
             documents.append(doc)
         except Exception as exc:

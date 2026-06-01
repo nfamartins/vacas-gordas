@@ -79,6 +79,12 @@ class ColumnMapping(BaseModel):
     indicador, a transação é tratada como débito.
     """
 
+    installment_column: str | None = None
+    """
+    Nome da coluna opcional com informação de parcela (ex: "Parcela").
+    Valores esperados: "3/12", "única", "Única". None se não houver parcela.
+    """
+
     skip_rows: int = 0
     """Número de linhas a pular antes do cabeçalho."""
 
@@ -254,11 +260,21 @@ class GenericCsvParser(BaseParser):
                     ),
                 )
 
+                installment: str | None = None
+                if (
+                    column_mapping.installment_column
+                    and column_mapping.installment_column in df.columns
+                ):
+                    inst_raw = str(row[column_mapping.installment_column]).strip()
+                    if not _is_empty(inst_raw):
+                        installment = inst_raw
+
                 transactions.append(RawTransaction(
                     date=date_str,
                     description=desc_raw,
                     amount=amount_abs,
                     type=tx_type,
+                    installment=installment,
                     raw_text=f"{date_raw}|{desc_raw}|{amount_raw}",
                 ))
 

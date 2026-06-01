@@ -61,6 +61,12 @@ class RawTransaction(BaseModel):
     currency: str = "BRL"
     """Código da moeda ISO 4217 (padrão: BRL)."""
 
+    installment: str | None = None
+    """Parcela da compra, ex: '3/12', 'única'. Presente apenas em faturas de cartão."""
+
+    is_transfer: bool = False
+    """True quando o parser identifica que o lançamento é uma transferência/pagamento de fatura."""
+
     raw_text: str = ""
     """Linha/bloco original do arquivo-fonte, para auditoria e depuração."""
 

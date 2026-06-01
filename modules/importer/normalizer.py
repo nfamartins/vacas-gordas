@@ -58,20 +58,21 @@ def compute_dedup_key(
     date_str: str,
     description_normalized: str,
     amount: Decimal,
+    installment: str = "",
 ) -> str:
     """
     Calcula a chave de deduplicação como hash SHA-256.
 
-    A chave é gerada a partir da tupla:
-        (account_id, date, description_normalized, amount_absoluto)
-
-    Usar amount absoluto (sem sinal) garante que o mesmo lançamento não seja
-    duplicado independente de como cada banco representa o sinal.
+    A chave inclui (account_id, date, description_normalized, amount, installment).
+    Incluir installment garante que parcelas de uma mesma compra
+    (ex: "7/12" e "8/12") não sejam tratadas como duplicatas.
+    O campo date deve ser a data de pagamento/vencimento quando disponível,
+    garantindo unicidade entre importações de meses diferentes.
 
     Returns:
         String hexadecimal de 64 caracteres.
     """
-    raw = f"{account_id}|{date_str}|{description_normalized}|{amount}"
+    raw = f"{account_id}|{date_str}|{description_normalized}|{amount}|{installment}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -81,6 +82,7 @@ def build_transaction_document(
     import_id: ObjectId,
     source_file: str,
     parser_id: str,
+    payment_date: str | None = None,
 ) -> dict:
     """
     Constrói o documento MongoDB completo a partir de uma RawTransaction.
@@ -109,10 +111,19 @@ def build_transaction_document(
 
     desc_normalized = normalize_description(raw.description)
 
+    # Data efetiva: usa payment_date (vencimento) quando fornecido, senão a data do arquivo.
+    # Para faturas de cartão: payment_date = data de vencimento da fatura.
+    effective_date = payment_date or raw.date
+
+    # purchase_date: data de compra original — salva apenas quando difere da data efetiva
+    purchase_date = raw.date if (payment_date and payment_date != raw.date) else None
+
     # Valor com sinal: débito → negativo, crédito → positivo
     signed_amount = float(-raw.amount if raw.type == "debit" else raw.amount)
 
-    dedup_key = compute_dedup_key(account_id, raw.date, desc_normalized, raw.amount)
+    dedup_key = compute_dedup_key(
+        account_id, effective_date, desc_normalized, raw.amount, raw.installment or ""
+    )
 
     now = datetime.now(timezone.utc)
 
@@ -121,7 +132,8 @@ def build_transaction_document(
         "account_id": account_id,
         "import_id": import_id,
         # ── Dados da transação ─────────────────────────────────────────────
-        "date": raw.date,
+        "date": effective_date,
+        "purchase_date": purchase_date,
         "description": raw.description,
         "description_normalized": desc_normalized,
         "amount": signed_amount,
@@ -148,9 +160,11 @@ def build_transaction_document(
         "tags": [],
         "notes": None,
         "is_ignored": False,
-        "is_transfer": False,
+        "is_transfer": raw.is_transfer,
+        "transfer_account_id": None,
         "duplicate_of": None,
         # ── Dados brutos (rastreabilidade) ─────────────────────────────────
+        "installment": raw.installment,
         "raw": {
             "original_description": raw.description,
             "source_file": source_file,

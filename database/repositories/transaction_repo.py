@@ -58,6 +58,42 @@ class TransactionRepository(BaseRepository):
             logger.error("Erro em insert_many de transactions: %s", exc, exc_info=True)
             return {"inserted": 0, "skipped": len(transactions)}
 
+    def delete_by_import_id(self, import_id: str) -> int:
+        """
+        Remove todas as transações vinculadas a uma importação.
+
+        Returns:
+            Número de transações deletadas.
+        """
+        try:
+            result = self.col.delete_many({"import_id": ObjectId(import_id)})
+            logger.info(
+                "delete_by_import_id(%s): %d transação(ões) removida(s).",
+                import_id, result.deleted_count,
+            )
+            return result.deleted_count
+        except Exception as exc:
+            logger.error("Erro em delete_by_import_id (%s): %s", import_id, exc)
+            return 0
+
+    def find_existing_dedup_keys(self, dedup_keys: list[str]) -> set[str]:
+        """
+        Retorna o subconjunto de dedup_keys que já existe na coleção.
+
+        Usado pela UI de importação para identificar duplicatas antes de inserir.
+        """
+        if not dedup_keys:
+            return set()
+        try:
+            docs = self.col.find(
+                {"dedup_key": {"$in": dedup_keys}},
+                {"dedup_key": 1, "_id": 0},
+            )
+            return {d["dedup_key"] for d in docs}
+        except Exception as exc:
+            logger.error("Erro em find_existing_dedup_keys: %s", exc)
+            return set()
+
     def update_category(
         self,
         transaction_id: str,

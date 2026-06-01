@@ -109,9 +109,31 @@ def detect_delimiter(sample: str) -> str:
     return ","
 
 
-def peek_headers(raw_content: bytes) -> list[str]:
+def detect_skip_rows(text: str, delimiter: str, min_cols: int = 3) -> int:
+    """
+    Detecta quantas linhas de preâmbulo existem antes do cabeçalho real.
+
+    Percorre as linhas e retorna o índice (base 0) da primeira linha que
+    possui ao menos `min_cols` células não-vazias — essa é considerada a
+    linha de cabeçalho. Retorna 0 se o arquivo já começa com o cabeçalho.
+
+    Usado para arquivos de banco que incluem texto informativo antes dos dados
+    (ex: extrato C6 Bank com título, agência e período no topo).
+    """
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    for i, row in enumerate(reader):
+        non_empty = [c.strip() for c in row if c.strip()]
+        if len(non_empty) >= min_cols:
+            return i
+    return 0
+
+
+def peek_headers(raw_content: bytes, min_cols: int = 3) -> list[str]:
     """
     Retorna apenas os nomes das colunas sem carregar todo o arquivo.
+
+    Ignora automaticamente linhas de preâmbulo (ex: cabeçalho informativo
+    do extrato C6) buscando a primeira linha com ao menos `min_cols` células.
 
     Usado por can_parse() para inspecionar o CSV com custo mínimo.
     Retorna lista vazia em qualquer erro — nunca lança exceção.
@@ -121,11 +143,14 @@ def peek_headers(raw_content: bytes) -> list[str]:
         text = raw_content.decode(encoding, errors="replace")
         delimiter = detect_delimiter(text)
 
+        skip = detect_skip_rows(text, delimiter, min_cols=min_cols)
         reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-        for row in reader:
-            # Ignora linhas totalmente vazias (ex: linhas de cabeçalho do banco)
-            if any(cell.strip() for cell in row):
-                return [cell.strip() for cell in row]
+        for i, row in enumerate(reader):
+            if i < skip:
+                continue
+            stripped = [cell.strip() for cell in row]
+            if any(stripped):
+                return stripped
         return []
     except Exception as exc:
         logger.debug("peek_headers falhou para o arquivo: %s", exc)
@@ -137,6 +162,7 @@ def read_csv_bytes(
     encoding: str | None = None,
     delimiter: str | None = None,
     skip_rows: int = 0,
+    auto_detect_skip: bool = False,
 ) -> CsvReadResult:
     """
     Lê bytes de CSV e retorna CsvReadResult com detecção automática de encoding
@@ -148,8 +174,9 @@ def read_csv_bytes(
         raw_content: Conteúdo binário do arquivo CSV.
         encoding:    Encoding a usar (auto-detectado se None).
         delimiter:   Delimitador a usar (auto-detectado se None).
-        skip_rows:   Número de linhas a pular antes do cabeçalho (ex: linhas
-                     informativas que alguns bancos incluem no topo do arquivo).
+        skip_rows:        Número de linhas a pular antes do cabeçalho.
+        auto_detect_skip: Se True e skip_rows==0, detecta automaticamente
+                          quantas linhas de preâmbulo pular (usa detect_skip_rows).
 
     Returns:
         CsvReadResult com DataFrame, encoding, delimitador e lista de colunas.
@@ -179,6 +206,12 @@ def read_csv_bytes(
 
     # ── Detecta delimitador ───────────────────────────────────────────────────
     delim = delimiter or detect_delimiter(text)
+
+    # ── Auto-detecta linhas de preâmbulo ──────────────────────────────────────
+    if auto_detect_skip and skip_rows == 0:
+        skip_rows = detect_skip_rows(text, delim)
+        if skip_rows:
+            logger.debug("Auto-detectado: pulando %d linha(s) de preâmbulo.", skip_rows)
 
     # ── Lê com pandas ─────────────────────────────────────────────────────────
     try:
